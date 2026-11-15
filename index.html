@@ -341,7 +341,7 @@
                 sessionStorage.setItem('hq_admin_auth', '1');
                 document.getElementById('hq-password-input').value = '';
             } catch (err) {
-                console.error(err);
+                console.warn('總部登入失敗（帳密錯誤）', err.code);
                 errEl.textContent = '登入失敗：帳號或密碼錯誤（或此帳號未被授權）';
                 errEl.classList.remove('hidden');
             } finally {
