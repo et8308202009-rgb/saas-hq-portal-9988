@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS 總部控制中心 | 多店授權與月租管理後台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        serif: ['"Noto Serif TC"', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- 登入驗證畫面 (開啟 admin.html 時先驗證開發者總部密碼) -->
+    <div id="admin-login-screen" class="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
+        <div class="w-full max-w-md rounded-3xl bg-slate-900/90 border border-slate-800 p-8 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center mx-auto text-2xl font-bold">
+                    🛡️
+                </div>
+                <span class="text-[11px] font-bold tracking-[0.2em] text-indigo-400 uppercase block">HQ COMMAND CENTER</span>
+                <h1 class="font-serif text-2xl font-black text-white">SaaS 總部多店管理後台</h1>
+                <p class="text-xs text-slate-400">請輸入開發者總部管理密碼以存取所有合作店家授權</p>
+            </div>
+
+            <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+                <div>
+                    <input type="password" id="hq-password-input" placeholder="請輸入總部管理密碼"
+                           class="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-700 text-center text-lg tracking-widest font-bold text-white focus:outline-none focus:border-indigo-500">
+                    <p id="hq-login-error" class="text-xs text-rose-400 text-center mt-2 hidden">密碼錯誤，請重新輸入！</p>
+                </div>
+                <button type="submit" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-950/50 transition">
+                    登入總部控制台
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 總部主控台內容 (登入後顯示) -->
+    <div id="admin-main-app" class="hidden min-h-screen flex flex-col">
+        <!-- 頂部導覽列 -->
+        <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 h-18 py-3.5 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-serif font-black text-lg shadow-md">
+                        HQ
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="font-serif font-bold text-lg sm:text-xl text-white">品牌官網點餐系統．總部控制中心</h1>
+                            <span id="cloud-conn-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                ● 雲端連線中
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400">集中管理旗下所有餐飲店家的系統開關、月租到期日與續約狀態</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button onclick="openAddStoreModal()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg transition flex items-center gap-1.5">
+                        <span>+ 新增合作店家</span>
+                    </button>
+                    <button onclick="logoutAdmin()" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                        登出
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
+            <!-- 總部營運 KPI 儀表板 -->
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-400 block">合作店家總數</span>
+                    <span id="hq-stat-total" class="font-serif text-3xl font-black text-white mt-1.5 block">0</span>
+                </div>
+                <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-400 block">正常營運中</span>
+                    <span id="hq-stat-active" class="font-serif text-3xl font-black text-emerald-400 mt-1.5 block">0</span>
+                </div>
+                <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-400 block">5日內即將到期</span>
+                    <span id="hq-stat-expiring" class="font-serif text-3xl font-black text-amber-400 mt-1.5 block">0</span>
+                </div>
+                <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-400 block">已停權 / 逾期鎖定</span>
+                    <span id="hq-stat-suspended" class="font-serif text-3xl font-black text-rose-400 mt-1.5 block">0</span>
+                </div>
+                <div class="col-span-2 lg:col-span-1 p-5 rounded-2xl bg-gradient-to-br from-indigo-950 to-slate-900 border border-indigo-500/40">
+                    <span class="text-xs text-indigo-300 block">預估每月穩定月租 (MRR)</span>
+                    <span id="hq-stat-mrr" class="font-serif text-3xl font-black text-amber-300 mt-1.5 block">$0</span>
+                </div>
+            </div>
+
+            <!-- 搜尋與狀態篩選列 (支援 100+ 間店快速檢索) -->
+            <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div class="relative flex-1 max-w-md">
+                    <input type="text" id="hq-search-input" oninput="renderStoresTable()" placeholder="搜尋店家名稱、STORE_ID、老闆姓名或電話..."
+                           class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+                    <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+
+                <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+                    <button onclick="setHqStatusFilter('all')" id="hq-filter-all" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white whitespace-nowrap transition">全部店家</button>
+                    <button onclick="setHqStatusFilter('active')" id="hq-filter-active" class="px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800 whitespace-nowrap transition">正常營運</button>
+                    <button onclick="setHqStatusFilter('expiring')" id="hq-filter-expiring" class="px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800 whitespace-nowrap transition">即將到期 (≤5天)</button>
+                    <button onclick="setHqStatusFilter('suspended')" id="hq-filter-suspended" class="px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800 whitespace-nowrap transition">已停權 / 逾期</button>
+                </div>
+            </div>
+
+            <!-- 店家管理列表卡片/表格 -->
+            <div class="rounded-3xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-950/80 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
+                                <th class="py-4 px-5">店家資訊 & STORE_ID</th>
+                                <th class="py-4 px-4">訂閱方案 / 月租</th>
+                                <th class="py-4 px-4">授權到期日</th>
+                                <th class="py-4 px-4">目前狀態</th>
+                                <th class="py-4 px-5 text-right">快速授權與續約操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hq-stores-tbody" class="divide-y divide-slate-800/80 text-sm">
+                            <!-- 由 JS 動態渲染所有合作店家 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 新增 / 編輯店家 Modal -->
+    <div id="store-form-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+        <div onclick="closeStoreFormModal()" class="absolute inset-0 bg-black/80 backdrop-blur-xs"></div>
+        <div class="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-700 p-6 sm:p-7 text-white shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 id="store-modal-title" class="font-serif text-xl font-bold text-white">+ 新增合作店家授權</h3>
+                <button onclick="closeStoreFormModal()" class="p-1.5 rounded-full hover:bg-slate-800 text-slate-400">✕</button>
+            </div>
+
+            <form onsubmit="saveStoreForm(event)" class="space-y-4 text-sm">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">店家專屬代碼 (STORE_ID) *</label>
+                        <input type="text" id="form-store-id" required placeholder="例如：xinyue-brunch"
+                               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 font-mono text-indigo-300 focus:outline-none focus:border-indigo-500">
+                        <span class="text-[11px] text-slate-500 mt-1 block">需與該店家網頁裡的 STORE_ID 一致</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">店家品牌名稱 *</label>
+                        <input type="text" id="form-store-name" required placeholder="例如：昕悅早午餐"
+                               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">業主聯絡人 / 電話</label>
+                        <input type="text" id="form-owner-contact" placeholder="例如：陳老闆 03-5262699"
+                               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">訂閱方案與月租金額</label>
+                        <select id="form-plan-select" onchange="onPlanSelectChange()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+                            <option value="輕量菜單版|580">輕量菜單版 ($580/月)</option>
+                            <option value="雲端接單旗艦版|980" selected>雲端接單旗艦版 ($980/月)</option>
+                            <option value="專屬品牌旗艦版|1480">專屬品牌旗艦版 ($1,480/月)</option>
+                            <option value="早鳥示範店方案|780">早鳥示範店方案 ($780/月)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">授權到期日 *</label>
+                        <input type="date" id="form-expire-date" required
+                               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">店家網址 (選填，方便點擊預覽)</label>
+                        <input type="url" id="form-store-url" placeholder="https://..."
+                               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                    <div>
+                        <span class="font-bold text-slate-200 block text-xs">超過到期日自動鎖定系統</span>
+                        <span class="text-[11px] text-slate-500">過期未續約將自動暫停該店家的接單權限</span>
+                    </div>
+                    <input type="checkbox" id="form-auto-lock" checked class="w-5 h-5 accent-indigo-500 rounded cursor-pointer">
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">欠費鎖定時顯示的提示訊息</label>
+                    <textarea id="form-lock-msg" rows="2" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">您的系統月租服務授權已到期，請聯繫系統服務專員辦理續約以恢復即時接單功能。</textarea>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-3">
+                    <button type="button" onclick="closeStoreFormModal()" class="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-medium hover:bg-slate-800">取消</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg">💾 儲存店家設定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div id="hq-toast" class="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold opacity-0 pointer-events-none transition-all duration-300">
+        已更新
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // 【總部 Firebase 連線設定】與您所有客戶店家共用同一個 Firebase 專案即可集中管理！
+        // =========================================================================
+        const HQ_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyDEid2JR2qNEb9WiztnrvtWM-P2_Z7d8ko",
+            authDomain: "xinyue-brunch.firebaseapp.com",
+            projectId: "xinyue-brunch",
+            storageBucket: "xinyue-brunch.firebasestorage.app",
+            messagingSenderId: "422971767605",
+            appId: "1:422971767605:web:f0678e61b023fc4ac56a7c"
+        };
+
+        // 總部登入超級密碼（建議上線後修改為您的專屬密碼）
+        const HQ_MASTER_PASSWORD = "dev998877";
+        // 總部專屬資料庫寫入簽章密鑰（須與 Firebase Firestore Rules 中的密鑰一致，防止外部竄改）
+        const HQ_WRITE_SIGNATURE = "XINYUE_HQ_MASTER_SIG_2026_998877";
+        const HQ_NAMESPACE = "xinyue-brunch-prod";
+
+        const rawConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : HQ_FIREBASE_CONFIG;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : HQ_NAMESPACE;
+
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let allStores = [];
+        let statusFilter = 'all';
+        let editingStoreId = null;
+
+        // 預設第一間示範店家（若資料庫尚無紀錄時自動初始化）
+        const DEFAULT_INITIAL_STORE = {
+            storeId: 'xinyue-brunch',
+            storeName: '昕悅早午餐 (新竹西門店)',
+            ownerContact: '陳老闆 / 03-5262699',
+            planName: '雲端接單旗艦版',
+            monthlyFee: 980,
+            isActive: true,
+            expireDate: '2027-12-31',
+            autoLockOnExpire: true,
+            storeUrl: '',
+            lockMessage: '您的系統月租服務授權已到期，請聯繫系統服務專員辦理續約以恢復即時接單功能。',
+            hqSecretKey: HQ_WRITE_SIGNATURE,
+            updatedAt: Date.now()
+        };
+
+        if (rawConfig && rawConfig.apiKey) {
+            const app = initializeApp(rawConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) {
+                    console.error("總部登入驗證失敗:", e);
+                }
+            };
+            initAuth();
+
+            onAuthStateChanged(auth, (user) => {
+                currentUser = user;
+                if (user) {
+                    subscribeToAllStores();
+                }
+            });
+        }
+
+        function subscribeToAllStores() {
+            if (!db || !currentUser) return;
+            const storesCol = collection(db, 'artifacts', appId, 'public', 'data', 'hq_stores');
+            onSnapshot(storesCol, async (snapshot) => {
+                const list = [];
+                snapshot.forEach(docSnap => {
+                    list.push({ id: docSnap.id, ...docSnap.data() });
+                });
+
+                // 若總部資料庫剛建立且完全空白，自動寫入「昕悅早午餐」作為第 1 筆店家資料
+                if (list.length === 0) {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_stores', DEFAULT_INITIAL_STORE.storeId), DEFAULT_INITIAL_STORE);
+                    return;
+                }
+
+                list.sort((a, b) => (a.expireDate || '').localeCompare(b.expireDate || ''));
+                allStores = list;
+                renderStoresTable();
+            }, (err) => {
+                console.error("讀取店家列表失敗:", err);
+                showHqToast("讀取店家資料失敗，請檢查 Firestore 權限規則");
+            });
+        }
+
+        // 總部登入驗證
+        window.handleAdminLogin = function(e) {
+            e.preventDefault();
+            const val = document.getElementById('hq-password-input').value.trim();
+            if (val === HQ_MASTER_PASSWORD) {
+                sessionStorage.setItem('hq_admin_auth', '1');
+                document.getElementById('admin-login-screen').classList.add('hidden');
+                document.getElementById('admin-main-app').classList.remove('hidden');
+                renderStoresTable();
+            } else {
+                document.getElementById('hq-login-error').classList.remove('hidden');
+            }
+        };
+
+        window.logoutAdmin = function() {
+            sessionStorage.removeItem('hq_admin_auth');
+            document.getElementById('admin-main-app').classList.add('hidden');
+            document.getElementById('admin-login-screen').classList.remove('hidden');
+            document.getElementById('hq-password-input').value = '';
+        };
+
+        // 檢查是否已登入
+        if (sessionStorage.getItem('hq_admin_auth') === '1') {
+            document.getElementById('admin-login-screen').classList.add('hidden');
+            document.getElementById('admin-main-app').classList.remove('hidden');
+        }
+
+        // 判斷店家授權狀態輔助函式
+        function getStoreComputedState(store) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const isExpired = store.autoLockOnExpire && store.expireDate && (todayStr > store.expireDate);
+            const isSuspended = !store.isActive || isExpired;
+
+            let daysLeft = null;
+            if (store.expireDate) {
+                const diffMs = new Date(store.expireDate) - new Date(todayStr);
+                daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            }
+            const isExpiringSoon = !isSuspended && daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
+            return { isSuspended, isExpired, isExpiringSoon, daysLeft };
+        }
+
+        window.setHqStatusFilter = function(filter) {
+            statusFilter = filter;
+            ['all', 'active', 'expiring', 'suspended'].forEach(f => {
+                const btn = document.getElementById(`hq-filter-${f}`);
+                if (!btn) return;
+                btn.className = f === filter
+                    ? 'px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white whitespace-nowrap transition'
+                    : 'px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800 whitespace-nowrap transition';
+            });
+            renderStoresTable();
+        };
+
+        window.renderStoresTable = function() {
+            const tbody = document.getElementById('hq-stores-tbody');
+            if (!tbody) return;
+
+            // 更新頂部 KPI
+            let activeCount = 0;
+            let expiringCount = 0;
+            let suspendedCount = 0;
+            let totalMrr = 0;
+
+            allStores.forEach(s => {
+                const st = getStoreComputedState(s);
+                if (st.isSuspended) {
+                    suspendedCount++;
+                } else {
+                    activeCount++;
+                    totalMrr += Number(s.monthlyFee || 0);
+                    if (st.isExpiringSoon) expiringCount++;
+                }
+            });
+
+            document.getElementById('hq-stat-total').textContent = allStores.length;
+            document.getElementById('hq-stat-active').textContent = activeCount;
+            document.getElementById('hq-stat-expiring').textContent = expiringCount;
+            document.getElementById('hq-stat-suspended').textContent = suspendedCount;
+            document.getElementById('hq-stat-mrr').textContent = `$${totalMrr.toLocaleString()}`;
+
+            // 搜尋與篩選
+            const kw = (document.getElementById('hq-search-input')?.value || '').trim().toLowerCase();
+            const filtered = allStores.filter(s => {
+                const st = getStoreComputedState(s);
+                if (statusFilter === 'active' && st.isSuspended) return false;
+                if (statusFilter === 'expiring' && !st.isExpiringSoon) return false;
+                if (statusFilter === 'suspended' && !st.isSuspended) return false;
+
+                if (!kw) return true;
+                return (s.storeName || '').toLowerCase().includes(kw) ||
+                       (s.storeId || '').toLowerCase().includes(kw) ||
+                       (s.ownerContact || '').toLowerCase().includes(kw);
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-16 text-center text-slate-500">找不到符合條件的合作店家</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(s => {
+                const st = getStoreComputedState(s);
+                let statusBadge = '';
+                if (!s.isActive) {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">✕ 手動停權中</span>`;
+                } else if (st.isExpired) {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">🔒 已逾期自動鎖定</span>`;
+                } else if (st.isExpiringSoon) {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">⚠️ 剩 ${st.daysLeft} 天到期</span>`;
+                } else {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">● 正常營運中</span>`;
+                }
+
+                return `
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="py-4 px-5">
+                            <div class="font-bold text-white text-base flex items-center gap-2">
+                                <span>${s.storeName}</span>
+                                ${s.storeUrl ? `<a href="${s.storeUrl}" target="_blank" class="text-xs text-indigo-400 hover:underline">↗ 開啟網站</a>` : ''}
+                            </div>
+                            <div class="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-slate-950 border border-slate-700 font-mono text-indigo-300">ID: ${s.storeId}</span>
+                                <span>${s.ownerContact || ''}</span>
+                            </div>
+                        </td>
+                        <td class="py-4 px-4">
+                            <span class="text-slate-200 font-medium block">${s.planName || '旗艦版'}</span>
+                            <span class="font-serif font-bold text-amber-400">$${s.monthlyFee || 0} / 月</span>
+                        </td>
+                        <td class="py-4 px-4 font-mono text-slate-200">
+                            ${s.expireDate || '未設定'}
+                        </td>
+                        <td class="py-4 px-4">
+                            ${statusBadge}
+                        </td>
+                        <td class="py-4 px-5 text-right">
+                            <div class="flex items-center justify-end gap-2 flex-wrap">
+                                <button onclick="quickRenewStore('${s.storeId}', 30)" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition">
+                                    + 續約30天
+                                </button>
+                                <button onclick="toggleStoreActive('${s.storeId}', ${!s.isActive})" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${s.isActive ? 'bg-rose-600/15 hover:bg-rose-600 text-rose-300 hover:text-white border-rose-500/40' : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'}">
+                                    ${s.isActive ? '一鍵停權' : '恢復開通'}
+                                </button>
+                                <button onclick="openEditStoreModal('${s.storeId}')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" title="編輯店家設定">
+                                    ✏️
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
+        // 一鍵續約 30 天（並自動恢復啟用）
+        window.quickRenewStore = async function(storeId, days) {
+            const target = allStores.find(s => s.storeId === storeId);
+            if (!target || !db) return;
+            const baseDate = target.expireDate ? new Date(Math.max(new Date(target.expireDate).getTime(), Date.now())) : new Date();
+            baseDate.setDate(baseDate.getDate() + days);
+            const nextDateStr = baseDate.toISOString().split('T')[0];
+
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_stores', storeId), {
+                    isActive: true,
+                    expireDate: nextDateStr,
+                    hqSecretKey: HQ_WRITE_SIGNATURE,
+                    updatedAt: Date.now()
+                });
+                showHqToast(`✅ 「${target.storeName}」已成功續約 ${days} 天（至 ${nextDateStr}）`);
+            } catch (e) {
+                console.error(e);
+                showHqToast("更新失敗，請重試");
+            }
+        };
+
+        // 一鍵停權 / 恢復開通
+        window.toggleStoreActive = async function(storeId, nextActive) {
+            const target = allStores.find(s => s.storeId === storeId);
+            if (!target || !db) return;
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_stores', storeId), {
+                    isActive: nextActive,
+                    hqSecretKey: HQ_WRITE_SIGNATURE,
+                    updatedAt: Date.now()
+                });
+                showHqToast(nextActive ? `🟢 已恢復「${target.storeName}」系統服務` : `🔴 已遠端停權「${target.storeName}」`);
+            } catch (e) {
+                console.error(e);
+                showHqToast("狀態切換失敗，請重試");
+            }
+        };
+
+        // 新增 / 編輯視窗控制
+        window.openAddStoreModal = function() {
+            editingStoreId = null;
+            document.getElementById('store-modal-title').textContent = '+ 新增合作店家授權';
+            const idInput = document.getElementById('form-store-id');
+            idInput.value = 'store-' + String(allStores.length + 1).padStart(3, '0');
+            idInput.disabled = false;
+            document.getElementById('form-store-name').value = '';
+            document.getElementById('form-owner-contact').value = '';
+            document.getElementById('form-plan-select').value = '雲端接單旗艦版|980';
+            const nextMonth = new Date();
+            nextMonth.setDate(nextMonth.getDate() + 30);
+            document.getElementById('form-expire-date').value = nextMonth.toISOString().split('T')[0];
+            document.getElementById('form-store-url').value = '';
+            document.getElementById('form-auto-lock').checked = true;
+            document.getElementById('store-form-modal').classList.remove('hidden');
+        };
+
+        window.openEditStoreModal = function(storeId) {
+            const target = allStores.find(s => s.storeId === storeId);
+            if (!target) return;
+            editingStoreId = storeId;
+            document.getElementById('store-modal-title').textContent = `編輯店家設定：${target.storeName}`;
+            const idInput = document.getElementById('form-store-id');
+            idInput.value = target.storeId;
+            idInput.disabled = true;
+            document.getElementById('form-store-name').value = target.storeName || '';
+            document.getElementById('form-owner-contact').value = target.ownerContact || '';
+            document.getElementById('form-plan-select').value = `${target.planName || '雲端接單旗艦版'}|${target.monthlyFee || 980}`;
+            document.getElementById('form-expire-date').value = target.expireDate || '';
+            document.getElementById('form-store-url').value = target.storeUrl || '';
+            document.getElementById('form-auto-lock').checked = !!target.autoLockOnExpire;
+            document.getElementById('form-lock-msg').value = target.lockMessage || '';
+            document.getElementById('store-form-modal').classList.remove('hidden');
+        };
+
+        window.closeStoreFormModal = function() {
+            document.getElementById('store-form-modal').classList.add('hidden');
+        };
+
+        window.saveStoreForm = async function(e) {
+            e.preventDefault();
+            if (!db) return;
+            const storeId = document.getElementById('form-store-id').value.trim();
+            const storeName = document.getElementById('form-store-name').value.trim();
+            const ownerContact = document.getElementById('form-owner-contact').value.trim();
+            const [planName, feeStr] = document.getElementById('form-plan-select').value.split('|');
+            const expireDate = document.getElementById('form-expire-date').value;
+            const storeUrl = document.getElementById('form-store-url').value.trim();
+            const autoLockOnExpire = document.getElementById('form-auto-lock').checked;
+            const lockMessage = document.getElementById('form-lock-msg').value.trim();
+
+            const existing = allStores.find(s => s.storeId === storeId);
+            const payload = {
+                storeId,
+                storeName,
+                ownerContact,
+                planName,
+                monthlyFee: Number(feeStr),
+                isActive: existing ? existing.isActive : true,
+                expireDate,
+                storeUrl,
+                autoLockOnExpire,
+                lockMessage,
+                hqSecretKey: HQ_WRITE_SIGNATURE,
+                updatedAt: Date.now()
+            };
+
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_stores', storeId), payload);
+                closeStoreFormModal();
+                showHqToast(`💾 已儲存「${storeName}」授權資料（STORE_ID: ${storeId}）`);
+            } catch (err) {
+                console.error(err);
+                showHqToast("儲存失敗，請重試");
+            }
+        };
+
+        function showHqToast(msg) {
+            const el = document.getElementById('hq-toast');
+            el.textContent = msg;
+            el.classList.remove('opacity-0');
+            setTimeout(() => el.classList.add('opacity-0'), 3000);
+        }
+    </script>
+</body>
+</html>
