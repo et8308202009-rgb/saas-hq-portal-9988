@@ -203,6 +203,25 @@
                     </div>
                 </div>
 
+                <div class="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-700/60 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-emerald-300 text-xs">💳 加值方案：線上行動支付</span>
+                        <span class="text-[11px] text-emerald-400/80">勾選即開通，店家端無法自行更改</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 text-[11px] text-slate-200">
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-linepay" class="w-3.5 h-3.5 accent-emerald-500">LINE Pay</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-jkopay" class="w-3.5 h-3.5 accent-emerald-500">街口支付</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-pxpay" class="w-3.5 h-3.5 accent-emerald-500">全支付</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-ipass" class="w-3.5 h-3.5 accent-emerald-500">iPASS</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-twqr" class="w-3.5 h-3.5 accent-emerald-500">台灣 Pay</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-easywallet" class="w-3.5 h-3.5 accent-emerald-500">悠遊付</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-opay" class="w-3.5 h-3.5 accent-emerald-500">歐付寶</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-ecpay" class="w-3.5 h-3.5 accent-emerald-500">綠界</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-newebpay" class="w-3.5 h-3.5 accent-emerald-500">藍新</label>
+                    </div>
+                    <p class="text-[11px] text-amber-300/90 leading-relaxed">提醒：開啟後客人只會看到選項並標記「待確認入帳」，實際收款仍需你自行核對金流商後台。</p>
+                </div>
+
                 <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
                     <div>
                         <span class="font-bold text-slate-200 block text-xs">超過到期日自動鎖定系統</span>
@@ -250,6 +269,7 @@
         // 授權寫入權限由 Firestore 規則依「登入 UID」判斷，密碼不再寫死在前端
         const HQ_ADMIN_EMAIL = "yueric377@gmail.com";
         const HQ_NAMESPACE = "xinyue-brunch-prod";
+        const HQ_PAYMENT_KEYS = ['linepay', 'jkopay', 'pxpay', 'ipass', 'twqr', 'easywallet', 'opay', 'ecpay', 'newebpay'];
 
         const rawConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : HQ_FIREBASE_CONFIG;
         const appId = typeof __app_id !== 'undefined' ? __app_id : HQ_NAMESPACE;
@@ -272,6 +292,7 @@
             expireDate: '2027-12-31',
             autoLockOnExpire: true,
             storeUrl: '',
+            enabledPayments: [],
             lockMessage: '您的系統月租服務授權已到期，請聯繫系統服務專員辦理續約以恢復即時接單功能。',
             updatedAt: Date.now()
         };
@@ -458,6 +479,9 @@
                         <td class="py-4 px-4">
                             <span class="text-slate-200 font-medium block">${s.planName || '旗艦版'}</span>
                             <span class="font-serif font-bold text-amber-400">$${s.monthlyFee || 0} / 月</span>
+                            ${(Array.isArray(s.enabledPayments) && s.enabledPayments.length)
+                                ? `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] font-bold">💳 ${s.enabledPayments.length} 種線上支付</span>`
+                                : `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">僅現金/轉帳</span>`}
                         </td>
                         <td class="py-4 px-4 font-mono text-slate-200">
                             ${s.expireDate || '未設定'}
@@ -535,6 +559,7 @@
             document.getElementById('form-expire-date').value = nextMonth.toISOString().split('T')[0];
             document.getElementById('form-store-url').value = '';
             document.getElementById('form-auto-lock').checked = true;
+            HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = false; });
             document.getElementById('store-form-modal').classList.remove('hidden');
         };
 
@@ -552,6 +577,8 @@
             document.getElementById('form-expire-date').value = target.expireDate || '';
             document.getElementById('form-store-url').value = target.storeUrl || '';
             document.getElementById('form-auto-lock').checked = !!target.autoLockOnExpire;
+            const enabledPays = Array.isArray(target.enabledPayments) ? target.enabledPayments : [];
+            HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = enabledPays.includes(k); });
             document.getElementById('form-lock-msg').value = target.lockMessage || '';
             document.getElementById('store-form-modal').classList.remove('hidden');
         };
@@ -582,6 +609,7 @@
                 isActive: existing ? existing.isActive : true,
                 expireDate,
                 storeUrl,
+                enabledPayments: HQ_PAYMENT_KEYS.filter(k => document.getElementById('form-pay-' + k)?.checked),
                 autoLockOnExpire,
                 lockMessage,
                 updatedAt: Date.now()
