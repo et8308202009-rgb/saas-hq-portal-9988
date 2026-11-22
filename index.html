@@ -219,6 +219,12 @@
                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-ecpay" class="w-3.5 h-3.5 accent-emerald-500">綠界</label>
                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-pay-newebpay" class="w-3.5 h-3.5 accent-emerald-500">藍新</label>
                     </div>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
+                        <label class="text-[11px] text-slate-300 shrink-0">線上支付授權至</label>
+                        <input type="date" id="form-pay-expire" class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500">
+                        <span class="text-[11px] text-slate-400">留空＝無期限；到期後店家端自動收回</span>
+                    </div>
+                    <div id="form-pay-log" class="text-[11px] text-slate-400 space-y-0.5 max-h-24 overflow-y-auto border-t border-emerald-700/40 pt-1.5"></div>
                     <p class="text-[11px] text-amber-300/90 leading-relaxed">提醒：開啟後客人只會看到選項並標記「待確認入帳」，實際收款仍需你自行核對金流商後台。</p>
                 </div>
 
@@ -271,6 +277,45 @@
         const HQ_NAMESPACE = "xinyue-brunch-prod";
         const HQ_PAYMENT_KEYS = ['linepay', 'jkopay', 'pxpay', 'ipass', 'twqr', 'easywallet', 'opay', 'ecpay', 'newebpay'];
 
+        // 方案 → 內含的線上支付（選方案時自動帶入，仍可手動加減）
+        const HQ_PLAN_PAYMENTS = {
+            '輕量菜單版': [],
+            '早鳥示範店方案': ['linepay'],
+            '雲端接單旗艦版': ['linepay', 'jkopay', 'ecpay'],
+            '專屬品牌旗艦版': ['linepay', 'jkopay', 'pxpay', 'ipass', 'twqr', 'easywallet', 'opay', 'ecpay', 'newebpay']
+        };
+
+        window.onPlanSelectChange = function() {
+            const sel = document.getElementById('form-plan-select');
+            if (!sel) return;
+            const planName = sel.value.split('|')[0];
+            const included = HQ_PLAN_PAYMENTS[planName] || [];
+            HQ_PAYMENT_KEYS.forEach(k => {
+                const el = document.getElementById('form-pay-' + k);
+                if (el) el.checked = included.includes(k);
+            });
+            showHqToast(`已套用「${planName}」內含 ${included.length} 種線上支付（可再手動調整）`);
+        };
+
+        function escapeHq(s) {
+            return String(s == null ? '' : s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c]);
+        }
+
+        function renderPaymentLog(list) {
+            const el = document.getElementById('form-pay-log');
+            if (!el) return;
+            if (!Array.isArray(list) || list.length === 0) {
+                el.innerHTML = '<span class="text-slate-500">尚無線上支付異動紀錄</span>';
+                return;
+            }
+            const label = { grant: '➕ 開通', revoke: '➖ 取消', expire: '📅 期限變更' };
+            el.innerHTML = list.slice().reverse().slice(0, 10).map(x => {
+                const d = new Date(x.at || 0);
+                const t = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                return `<div>${label[x.action] || x.action} <span class="text-slate-500">${t}</span> ${escapeHq(x.detail)}</div>`;
+            }).join('');
+        }
+
         const rawConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : HQ_FIREBASE_CONFIG;
         const appId = typeof __app_id !== 'undefined' ? __app_id : HQ_NAMESPACE;
 
@@ -293,6 +338,8 @@
             autoLockOnExpire: true,
             storeUrl: '',
             enabledPayments: [],
+            paymentExpireDate: '',
+            paymentLog: [],
             lockMessage: '您的系統月租服務授權已到期，請聯繫系統服務專員辦理續約以恢復即時接單功能。',
             updatedAt: Date.now()
         };
@@ -479,9 +526,14 @@
                         <td class="py-4 px-4">
                             <span class="text-slate-200 font-medium block">${s.planName || '旗艦版'}</span>
                             <span class="font-serif font-bold text-amber-400">$${s.monthlyFee || 0} / 月</span>
-                            ${(Array.isArray(s.enabledPayments) && s.enabledPayments.length)
-                                ? `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] font-bold">💳 ${s.enabledPayments.length} 種線上支付</span>`
-                                : `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">僅現金/轉帳</span>`}
+                            ${(() => {
+                                const list = Array.isArray(s.enabledPayments) ? s.enabledPayments : [];
+                                const today = new Date().toISOString().split('T')[0];
+                                const expired = s.paymentExpireDate && today > s.paymentExpireDate;
+                                if (!list.length) return `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">僅現金/轉帳</span>`;
+                                if (expired) return `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-300 text-[10px] font-bold">💳 已到期 ${s.paymentExpireDate}</span>`;
+                                return `<span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] font-bold">💳 ${list.length} 種${s.paymentExpireDate ? ` 至 ${s.paymentExpireDate}` : ''}</span>`;
+                            })()}
                         </td>
                         <td class="py-4 px-4 font-mono text-slate-200">
                             ${s.expireDate || '未設定'}
@@ -560,6 +612,8 @@
             document.getElementById('form-store-url').value = '';
             document.getElementById('form-auto-lock').checked = true;
             HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = false; });
+            document.getElementById('form-pay-expire').value = '';
+            renderPaymentLog([]);
             document.getElementById('store-form-modal').classList.remove('hidden');
         };
 
@@ -579,6 +633,8 @@
             document.getElementById('form-auto-lock').checked = !!target.autoLockOnExpire;
             const enabledPays = Array.isArray(target.enabledPayments) ? target.enabledPayments : [];
             HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = enabledPays.includes(k); });
+            document.getElementById('form-pay-expire').value = target.paymentExpireDate || '';
+            renderPaymentLog(target.paymentLog || []);
             document.getElementById('form-lock-msg').value = target.lockMessage || '';
             document.getElementById('store-form-modal').classList.remove('hidden');
         };
@@ -600,6 +656,20 @@
             const lockMessage = document.getElementById('form-lock-msg').value.trim();
 
             const existing = allStores.find(s => s.storeId === storeId);
+            const enabledPayments = HQ_PAYMENT_KEYS.filter(k => document.getElementById('form-pay-' + k)?.checked);
+            const paymentExpireDate = document.getElementById('form-pay-expire').value || '';
+            const prevPays = (existing && Array.isArray(existing.enabledPayments)) ? existing.enabledPayments : [];
+            const prevExpire = (existing && existing.paymentExpireDate) || '';
+            const added = enabledPayments.filter(k => !prevPays.includes(k));
+            const removed = prevPays.filter(k => !enabledPayments.includes(k));
+            const payLog = (existing && Array.isArray(existing.paymentLog)) ? existing.paymentLog.slice(-49) : [];
+            if (existing) {
+                if (added.length) payLog.push({ at: Date.now(), action: 'grant', detail: added.join(', ') });
+                if (removed.length) payLog.push({ at: Date.now(), action: 'revoke', detail: removed.join(', ') });
+                if (prevExpire !== paymentExpireDate) payLog.push({ at: Date.now(), action: 'expire', detail: paymentExpireDate || '設為無期限' });
+            } else if (enabledPayments.length) {
+                payLog.push({ at: Date.now(), action: 'grant', detail: enabledPayments.join(', ') });
+            }
             const payload = {
                 storeId,
                 storeName,
@@ -609,7 +679,9 @@
                 isActive: existing ? existing.isActive : true,
                 expireDate,
                 storeUrl,
-                enabledPayments: HQ_PAYMENT_KEYS.filter(k => document.getElementById('form-pay-' + k)?.checked),
+                enabledPayments,
+                paymentExpireDate,
+                paymentLog: payLog,
                 autoLockOnExpire,
                 lockMessage,
                 updatedAt: Date.now()
