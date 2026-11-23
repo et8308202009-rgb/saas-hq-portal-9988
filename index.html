@@ -228,6 +228,33 @@
                     <p class="text-[11px] text-amber-300/90 leading-relaxed">提醒：開啟後客人只會看到選項並標記「待確認入帳」，實際收款仍需你自行核對金流商後台。</p>
                 </div>
 
+                <div class="p-3.5 rounded-2xl bg-sky-950/40 border border-sky-700/60 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-sky-300 text-xs">🚚 派車伺服器與 Lalamove 金鑰</span>
+                        <span id="form-dispatch-status" class="text-[11px] text-slate-400">未檢查</span>
+                    </div>
+                    <input type="text" id="form-dispatch-url" placeholder="派車伺服器網址 https://xinyue-dispatch.xxx.workers.dev"
+                           class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-sky-500">
+                    <div class="grid grid-cols-3 gap-2">
+                        <input type="password" id="form-admin-token" placeholder="管理密鑰（只存在本機）"
+                               class="col-span-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-sky-500">
+                        <button type="button" onclick="checkDispatchKey()" class="px-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold border border-sky-700/60">檢查狀態</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <input type="text" id="form-lala-key" placeholder="Lalamove API Key"
+                               class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-sky-500">
+                        <input type="password" id="form-lala-secret" placeholder="API Secret"
+                               class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-sky-500">
+                        <select id="form-lala-market" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-sky-500">
+                            <option value="TW">TW 台灣</option>
+                            <option value="HK">HK 香港</option>
+                            <option value="SG">SG 新加坡</option>
+                        </select>
+                    </div>
+                    <button type="button" onclick="saveLalamoveKey()" class="w-full py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">儲存金鑰到派車伺服器</button>
+                    <p class="text-[11px] text-slate-500 leading-relaxed">金鑰存在 Cloudflare KV，不會寫進資料庫，店家端也讀不到。</p>
+                </div>
+
                 <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
                     <div>
                         <span class="font-bold text-slate-200 block text-xs">超過到期日自動鎖定系統</span>
@@ -340,6 +367,7 @@
             enabledPayments: [],
             paymentExpireDate: '',
             paymentLog: [],
+            dispatchWorkerUrl: '',
             lockMessage: '您的系統月租服務授權已到期，請聯繫系統服務專員辦理續約以恢復即時接單功能。',
             updatedAt: Date.now()
         };
@@ -613,6 +641,8 @@
             document.getElementById('form-auto-lock').checked = true;
             HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = false; });
             document.getElementById('form-pay-expire').value = '';
+            document.getElementById('form-dispatch-url').value = '';
+            setDispatchStatus('未設定', 'text-slate-400');
             renderPaymentLog([]);
             document.getElementById('store-form-modal').classList.remove('hidden');
         };
@@ -633,6 +663,8 @@
             document.getElementById('form-auto-lock').checked = !!target.autoLockOnExpire;
             const enabledPays = Array.isArray(target.enabledPayments) ? target.enabledPayments : [];
             HQ_PAYMENT_KEYS.forEach(k => { const el = document.getElementById('form-pay-' + k); if (el) el.checked = enabledPays.includes(k); });
+            document.getElementById('form-dispatch-url').value = target.dispatchWorkerUrl || '';
+            setDispatchStatus(target.dispatchWorkerUrl ? '已填網址，可檢查金鑰' : '未設定', 'text-slate-400');
             document.getElementById('form-pay-expire').value = target.paymentExpireDate || '';
             renderPaymentLog(target.paymentLog || []);
             document.getElementById('form-lock-msg').value = target.lockMessage || '';
@@ -641,6 +673,71 @@
 
         window.closeStoreFormModal = function() {
             document.getElementById('store-form-modal').classList.add('hidden');
+        };
+
+        function hqDispatchToken() {
+            const el = document.getElementById('form-admin-token');
+            if (el && el.value.trim()) sessionStorage.setItem('hq_dispatch_token', el.value.trim());
+            return sessionStorage.getItem('hq_dispatch_token') || '';
+        }
+
+        function hqDispatchUrl() {
+            const el = document.getElementById('form-dispatch-url');
+            return ((el && el.value.trim()) || '').replace(/\/+$/, '');
+        }
+
+        function setDispatchStatus(text, color) {
+            const el = document.getElementById('form-dispatch-status');
+            if (!el) return;
+            el.textContent = text;
+            el.className = 'text-[11px] ' + (color || 'text-slate-400');
+        }
+
+        window.checkDispatchKey = async function() {
+            const url = hqDispatchUrl();
+            const token = hqDispatchToken();
+            const storeId = document.getElementById('form-store-id').value.trim();
+            if (!url) return showHqToast('請先填派車伺服器網址');
+            if (!token) return showHqToast('請先填管理密鑰');
+            try {
+                const res = await fetch(`${url}/admin/keys?storeId=${encodeURIComponent(storeId)}`, { headers: { 'x-admin-token': token } });
+                const data = await res.json();
+                if (!data.ok) return setDispatchStatus(data.error || '讀取失敗', 'text-rose-400');
+                if (data.configured) {
+                    setDispatchStatus(`已設定 ${data.masked}`, 'text-emerald-400');
+                } else {
+                    setDispatchStatus('尚未設定金鑰', 'text-amber-400');
+                }
+            } catch (e) {
+                setDispatchStatus('無法連線派車伺服器', 'text-rose-400');
+            }
+        };
+
+        window.saveLalamoveKey = async function() {
+            const url = hqDispatchUrl();
+            const token = hqDispatchToken();
+            const storeId = document.getElementById('form-store-id').value.trim();
+            const apiKey = document.getElementById('form-lala-key').value.trim();
+            const apiSecret = document.getElementById('form-lala-secret').value.trim();
+            const market = document.getElementById('form-lala-market').value;
+            if (!url) return showHqToast('請先填派車伺服器網址');
+            if (!token) return showHqToast('請先填管理密鑰');
+            if (!apiKey || !apiSecret) return showHqToast('請填 Lalamove API Key 與 Secret');
+            try {
+                const res = await fetch(`${url}/admin/keys`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+                    body: JSON.stringify({ storeId, apiKey, apiSecret, market })
+                });
+                const data = await res.json();
+                if (!data.ok) return showHqToast('儲存失敗：' + (data.error || res.status));
+                document.getElementById('form-lala-key').value = '';
+                document.getElementById('form-lala-secret').value = '';
+                setDispatchStatus(`已設定 ${data.masked}`, 'text-emerald-400');
+                showHqToast('金鑰已存入派車伺服器（不會寫進資料庫）');
+            } catch (e) {
+                showHqToast('連線失敗：' + e.message);
+            }
         };
 
         window.saveStoreForm = async function(e) {
@@ -680,6 +777,7 @@
                 expireDate,
                 storeUrl,
                 enabledPayments,
+                dispatchWorkerUrl: (document.getElementById('form-dispatch-url')?.value || '').trim(),
                 paymentExpireDate,
                 paymentLog: payLog,
                 autoLockOnExpire,
