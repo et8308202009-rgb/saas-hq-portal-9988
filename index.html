@@ -130,6 +130,25 @@
                 </form>
             </div>
 
+            <!-- 全域派車伺服器（設定一次，所有店家共用） -->
+            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/40 text-[11px] font-bold">🚚 全域派車</span>
+                        <h2 class="font-serif text-base sm:text-lg font-bold text-white">派車伺服器網址（所有店家預設）</h2>
+                        <span id="hq-global-dispatch-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">未設定</span>
+                    </div>
+                    <p class="text-xs text-slate-400">部署 Cloudflare Worker 後把網址貼在這裡，所有店家立即套用；個別店家可在編輯視窗單獨覆寫。</p>
+                </div>
+                <form onsubmit="saveHqGlobalDispatch(event)" class="flex flex-wrap items-center gap-2.5">
+                    <input type="text" id="hq-global-dispatch-input" placeholder="https://xinyue-dispatch.xxx.workers.dev"
+                           class="px-3.5 py-2 rounded-xl bg-slate-950 border border-sky-500/40 font-mono text-xs text-sky-200 focus:outline-none focus:border-sky-400 w-72">
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md transition whitespace-nowrap">
+                        💾 儲存網址
+                    </button>
+                </form>
+            </div>
+
             <!-- 搜尋與狀態篩選列 (支援 100+ 間店快速檢索) -->
             <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div class="relative flex-1 max-w-md">
@@ -408,6 +427,7 @@
                     document.getElementById('admin-main-app').classList.remove('hidden');
                     subscribeToAllStores();
                     subscribeToGlobalSecurity();
+                    subscribeToGlobalConfig();
                     renderStoresTable();
                 }
             });
@@ -435,6 +455,43 @@
                 setSuperPasscodeStatus(has);
             }, () => {});
         }
+
+        function setGlobalDispatchStatus(url) {
+            const el = document.getElementById('hq-global-dispatch-status');
+            if (!el) return;
+            el.textContent = url ? '已設定' : '未設定';
+            el.className = url
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        }
+
+        function subscribeToGlobalConfig() {
+            if (!db || !currentUser) return;
+            const cfgRef = doc(db, 'artifacts', appId, 'public', 'data', 'hq_config', 'config');
+            onSnapshot(cfgRef, (snap) => {
+                const u = snap.exists() ? (snap.data().dispatchWorkerUrl || '') : '';
+                const input = document.getElementById('hq-global-dispatch-input');
+                if (input && document.activeElement !== input) input.value = u;
+                setGlobalDispatchStatus(u);
+            }, () => {});
+        }
+
+        window.saveHqGlobalDispatch = async function(e) {
+            e.preventDefault();
+            if (!db || !currentUser) return;
+            const url = (document.getElementById('hq-global-dispatch-input')?.value || '').trim().replace(/\/+$/, '');
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_config', 'config'), {
+                    dispatchWorkerUrl: url,
+                    updatedAt: Date.now()
+                }, { merge: true });
+                setGlobalDispatchStatus(url);
+                showHqToast(url ? '🚚 全域派車網址已儲存，所有店家立即生效' : '已清除全域派車網址');
+            } catch (err) {
+                console.error(err);
+                showHqToast('儲存失敗，請檢查資料庫權限');
+            }
+        };
 
         window.saveHqSuperAdminPasscode = async function(e) {
             e.preventDefault();
