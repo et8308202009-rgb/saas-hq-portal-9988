@@ -111,6 +111,25 @@
                 </div>
             </div>
 
+            <!-- 全域超級管理員救援密碼 -->
+            <div class="p-5 rounded-2xl bg-gradient-to-r from-indigo-950/90 via-slate-900 to-slate-900 border border-indigo-500/40 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40 text-[11px] font-bold">🛡️ 全域救援權限</span>
+                        <h2 class="font-serif text-base sm:text-lg font-bold text-white">店家後台「超級管理員救援密碼」</h2>
+                        <span id="hq-super-passcode-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">未設定</span>
+                    </div>
+                    <p class="text-xs text-slate-400">用這組密碼可免店家密碼登入任何一間店的後台（協助救援／代管）。系統只存雜湊值，任何人都看不到明碼。</p>
+                </div>
+                <form onsubmit="saveHqSuperAdminPasscode(event)" class="flex flex-wrap items-center gap-2.5">
+                    <input type="password" id="hq-super-passcode-input" placeholder="輸入新的救援密碼（至少 6 碼）"
+                           class="px-3.5 py-2 rounded-xl bg-slate-950 border border-indigo-500/50 font-mono text-sm text-amber-300 font-bold tracking-wider focus:outline-none focus:border-indigo-400 w-56">
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition whitespace-nowrap">
+                        🔑 更新救援密碼
+                    </button>
+                </form>
+            </div>
+
             <!-- 搜尋與狀態篩選列 (支援 100+ 間店快速檢索) -->
             <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div class="relative flex-1 max-w-md">
@@ -388,10 +407,56 @@
                     document.getElementById('admin-login-screen').classList.add('hidden');
                     document.getElementById('admin-main-app').classList.remove('hidden');
                     subscribeToAllStores();
+                    subscribeToGlobalSecurity();
                     renderStoresTable();
                 }
             });
         }
+
+        async function sha256Hex(text) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+            return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function setSuperPasscodeStatus(configured) {
+            const el = document.getElementById('hq-super-passcode-status');
+            if (!el) return;
+            el.textContent = configured ? '已設定' : '未設定（預設 cf889977）';
+            el.className = configured
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        }
+
+        function subscribeToGlobalSecurity() {
+            if (!db || !currentUser) return;
+            const secRef = doc(db, 'artifacts', appId, 'public', 'data', 'hq_config', 'security');
+            onSnapshot(secRef, (docSnap) => {
+                const has = docSnap.exists() && !!docSnap.data().superAdminPasscodeHash;
+                setSuperPasscodeStatus(has);
+            }, () => {});
+        }
+
+        window.saveHqSuperAdminPasscode = async function(e) {
+            e.preventDefault();
+            if (!db || !currentUser) return;
+            const pw = (document.getElementById('hq-super-passcode-input')?.value || '').trim();
+            if (pw.length < 6) {
+                showHqToast('⚠️ 救援密碼至少需要 6 個字元');
+                return;
+            }
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hq_config', 'security'), {
+                    superAdminPasscodeHash: await sha256Hex(pw),
+                    updatedAt: Date.now()
+                }, { merge: true });
+                document.getElementById('hq-super-passcode-input').value = '';
+                setSuperPasscodeStatus(true);
+                showHqToast('🛡️ 救援密碼已更新，所有店家立即生效（只存雜湊）');
+            } catch (err) {
+                console.error(err);
+                showHqToast('更新失敗，請檢查資料庫權限');
+            }
+        };
 
         function subscribeToAllStores() {
             if (!db || !currentUser) return;
